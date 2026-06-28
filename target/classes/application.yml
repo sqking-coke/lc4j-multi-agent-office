@@ -1,0 +1,59 @@
+server:
+  port: 8085
+
+spring:
+  application:
+    name: lc4j-multi-agent-office
+  datasource:
+    url: jdbc:mysql://localhost:3306/agent_office?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+    username: root
+    password: ${DB_PASSWORD:123456}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  security:
+    user:
+      name: admin
+      password: ${ADMIN_PASSWORD:admin123}
+
+mybatis-plus:
+  mapper-locations: classpath*:/mapper/**/*.xml
+  global-config:
+    db-config:
+      id-type: auto
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+  configuration:
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+    map-underscore-to-camel-case: true
+
+# LLM Configuration
+llm:
+  api-url: ${LLM_API_URL:https://api.deepseek.com/v1}
+  api-key: ${LLM_API_KEY:sk-87d2c2733d534b858b43d3cd5d531ab3}
+  model: ${LLM_MODEL:deepseek-v4-flash}
+  temperature: 0.3
+  max-tokens: 4096
+  timeout-seconds: 300
+  max-retries: 3
+
+# JWT Configuration
+jwt:
+  secret: ${JWT_SECRET:dGhpcy1pcy1hLXNlY3VyZS0yNTYtYml0LWp3dC1zZWNyZXQta2V5LWZvci1kZXZlbG9wbWVudC1vbmx5}
+  expiration: 3600000
+  refresh-expiration: 604800000
+
+# Jasypt Encryption
+jasypt:
+  encryptor:
+    password: ${JASYPT_PASSWORD:your-jasypt-password}
+
+# Actuator
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  metrics:
+    export:
+      prometheus:
+        enabled: true
