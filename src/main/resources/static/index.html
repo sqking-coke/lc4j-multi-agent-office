@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agent Office — 功能验证</title>
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 min-h-screen p-6 font-mono">
+
+<div class="max-w-5xl mx-auto">
+  <div class="mb-6">
+    <h1 class="text-xl font-bold text-gray-800">Agent Office 功能验证</h1>
+    <p class="text-xs text-gray-400 mt-1">
+      提交任务 → 观察 StateGraph 编排过程：分解 → 路由 → Agent 执行 → 聚合报告
+    </p>
+  </div>
+
+  <!-- Task triggers -->
+  <div class="grid grid-cols-3 gap-3 mb-6" id="triggers"></div>
+
+  <!-- Custom input -->
+  <div class="flex gap-3 mb-6">
+    <input id="name" class="flex-1 border rounded px-3 py-2 text-sm bg-white" placeholder="任务名称（可选，用于触发关键词匹配）" value="">
+    <input id="content" class="flex-[2] border rounded px-3 py-2 text-sm bg-white" placeholder="任务内容，输入后点「提交」或直接点上方快捷按钮">
+    <button id="go" onclick="submit()" class="bg-gray-800 text-white px-6 py-2 rounded text-sm hover:bg-black transition disabled:opacity-30">提交</button>
+  </div>
+
+  <!-- Result -->
+  <div id="result" class="text-sm text-gray-400">等待提交任务…</div>
+</div>
+
+<script>
+const API = '';
+
+// Pre-defined triggers — one per Agent, labels match README
+const PRESETS = [
+  {name:'代码审查', content:'请审查 StringUtils.java：public class StringUtils { public static boolean isEmpty(String s) { return s == null || s.length() == 0; } public static String capitalize(String s) { if (isEmpty(s)) return s; return s.substring(0,1).toUpperCase() + s.substring(1); } }', agent:'code_review_agent + document_agent'},
+  {name:'工单处理', content:'用户反馈：高峰期登录页面响应超时 5 秒以上。初步排查发现数据库连接池活跃连接数达到上限 100，等待队列积压 20+。需要分析根因并给出修复方案。', agent:'ticket_agent ∥ rag_qa_agent'},
+  {name:'文档处理', content:'请总结以下内容要点：Spring Boot 3.5 正式支持 Java 21 虚拟线程，通过 spring.threads.virtual.enabled=true 即可启用。虚拟线程将阻塞 IO 操作从平台线程解耦，使单个应用可同时处理数十万并发连接。配合 GraalVM Native Image 编译，启动时间可压缩至毫秒级。', agent:'document_agent'},
+  {name:'智能答疑', content:'什么是 Java 虚拟线程？它与传统平台线程有什么区别？什么场景下应该使用虚拟线程？', agent:'rag_qa_agent + document_agent'},
+  {name:'数据报告', content:'本周系统指标：API 总调用量 230 万次，P99 延迟 320ms，错误率 0.3%。与上周对比：调用量 +12%，延迟 +8%，错误率 -0.1%。请生成数据周报。', agent:'data_report_agent (×3)'},
+  {name:'翻译', content:'Artificial intelligence is transforming the way we work. Machine learning models can understand natural language, recognize images, and make predictions with remarkable accuracy.', agent:'translation_agent'},
+];
+
+// Render trigger buttons
+document.getElementById('triggers').innerHTML = PRESETS.map((p,i) =>
+  `<button onclick="trigger(${i})" class="text-left bg-white border rounded p-3 hover:border-gray-400 transition group">
+    <div class="text-sm font-semibold text-gray-700 group-hover:text-gray-900">${p.name}</div>
+    <div class="text-xs text-gray-400 mt-0.5 font-mono">${p.agent}</div>
+    <div class="text-xs text-gray-300 mt-1 truncate">${p.content.substring(0,60)}…</div>
+  </button>`
+).join('');
+
+function trigger(i) {
+  const p = PRESETS[i];
+  document.getElementById('name').value = p.name;
+  document.getElementById('content').value = p.content;
+  submit();
+}
+
+async function submit() {
+  const name = document.getElementById('name').value.trim() || '未命名任务';
+  const content = document.getElementById('content').value.trim();
+  if (!content) return;
+
+  const go = document.getElementById('go');
+  go.disabled = true; go.textContent = '执行中…';
+  document.getElementById('result').innerHTML = '<div class="text-gray-400">⏳ 执行中…</div>';
+
+  const t0 = performance.now();
+  try {
+    const r = await fetch(API + '/api/v2/tasks/submit', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({taskName:name, taskContent:content, submitUserId:1, tenantId:1})
+    });
+    const d = await r.json();
+    const elapsed = ((performance.now() - t0)/1000).toFixed(1);
+    render(d, elapsed);
+  } catch(e) {
+    document.getElementById('result').innerHTML = `<div class="text-red-500">请求失败: ${e.message}</div>`;
+  } finally {
+    go.disabled = false; go.textContent = '提交';
+  }
+}
+
+function render(d, elapsed) {
+  const results = d.agentResults || [];
+  const ok = results.filter(r=>r.success).length;
+
+  let html = '';
+
+  // 1. Trace header
+  html += `<div class="bg-white border rounded p-4 mb-4">
+    <div class="flex items-center gap-3 text-xs">
+      <span class="text-gray-400">trace</span><span class="font-semibold">${d.traceId}</span>
+      <span class="bg-gray-100 px-2 py-0.5 rounded">${d.coopMode}</span>
+      <span class="${d.finalStatus===1?'text-green-600':'text-red-500'} font-bold">${d.finalStatus===1?'完成':'失败'}</span>
+      <span class="text-gray-400">${elapsed}s</span>
+      <span class="text-gray-400">${ok}/${results.length} 成功</span>
+    </div>
+  </div>`;
+
+  // 2. Agent execution flow — visual pipeline
+  html += '<div class="space-y-2 mb-4">';
+  results.forEach((r,i) => {
+    const bg = r.success ? 'border-green-200' : 'border-red-200';
+    html += `<div class="bg-white border-l-4 ${bg} rounded-r p-3">
+      <div class="flex items-center justify-between text-xs mb-1">
+        <span><span class="text-gray-400">${i+1}.</span> <span class="font-semibold">${r.taskName}</span></span>
+        <span class="text-gray-400 font-mono">${r.agentCode}</span>
+        <span class="text-gray-400">${r.costTimeMs}ms</span>
+        <span class="${r.success?'text-green-600':'text-red-500'}">${r.success?'ok':'fail'}</span>
+      </div>`;
+
+    // Key data depends on agent type
+    const data = r.data || {};
+    if (data.translatedText) {
+      html += `<div class="text-xs text-gray-600 bg-gray-50 p-2 rounded mt-1">${data.sourceLanguage||'?'} → ${data.targetLanguage||'?'} | 置信度 ${(data.confidence*100).toFixed(0)}%<br><span class="font-semibold">${data.translatedText.substring(0,200)}</span></div>`;
+    } else if (data.score !== undefined) {
+      html += `<div class="text-xs text-gray-600 mt-1">评分 ${data.score}/100 | issues: ${(data.issues||[]).length} | ${data.summary||''}</div>`;
+    } else if (data.category) {
+      html += `<div class="text-xs text-gray-600 mt-1">分类: ${data.category} | 紧急度: ${data.urgency}/5 | ${data.suggestion||''}</div>`;
+    } else if (data.metrics) {
+      html += `<div class="text-xs text-gray-600 mt-1">指标: ${Object.keys(data.metrics).join(', ')}</div>`;
+    } else if (data.operation) {
+      html += `<div class="text-xs text-gray-600 mt-1">${data.result||''}</div>`;
+    } else {
+      html += `<div class="text-xs text-gray-500 mt-1">${r.summary||''}</div>`;
+    }
+
+    if (!r.success && r.summary) {
+      html += `<div class="text-xs text-red-400 mt-1 truncate">${r.summary.substring(0,150)}</div>`;
+    }
+    html += '</div>';
+  });
+  html += '</div>';
+
+  // 3. Aggregated report
+  if (d.finalSummary) {
+    html += `<div class="bg-white border rounded p-4 text-xs whitespace-pre-wrap leading-relaxed text-gray-700">${d.finalSummary}</div>`;
+  }
+
+  document.getElementById('result').innerHTML = html;
+}
+</script>
+</body>
+</html>

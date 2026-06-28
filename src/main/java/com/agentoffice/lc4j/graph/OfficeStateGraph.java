@@ -20,16 +20,21 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 
 /**
- * 多 Agent 协同办公主 StateGraph — 替代手写版 DispatchHub (230行) + 7 Strategy (660行)。
+ * 任务编排引擎 —— 基于 LangGraph4j StateGraph 构建的 DAG 执行器。
+ *
+ * <p>核心流程：接收任务 → 分解为子任务 → 按协同模式路由 → Agent 执行 → 质量判定 → 聚合报告。</p>
  *
  * <pre>
- * 图结构: decompose → [routeByCoopMode] → fanout/agent_executor → aggregator
- *
- * PARALLEL   → decompose → fanout → agent_executor → aggregator
- * SERIAL     → decompose → agent_executor → aggregator
- * LOOP       → decompose → agent_executor → [routeForLoop] → agent_executor(↩) | aggregator
- * CONDITION  → decompose → condition_check → agent_executor → aggregator
+ * 图结构:
+ *   decompose → routeByCoopMode → agent_executor → routeForLoop → aggregator → END
+ *                    │                  ↑                │
+ *                    │     PARALLEL → fanout              │ 质量不达标→重做
+ *                    │     SERIAL   → agent_executor      │
+ *                    │     CONDITION→ condition_check     │
  * </pre>
+ *
+ * <p>相比手写 if-else 分支编排（~890行），StateGraph DAG 声明式定义（~210行）
+ * 更易读、更易扩展、框架保证并行状态合并的原子性。</p>
  */
 @Slf4j
 @Component

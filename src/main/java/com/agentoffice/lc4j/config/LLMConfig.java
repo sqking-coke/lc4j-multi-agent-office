@@ -12,16 +12,19 @@ import org.springframework.context.annotation.Configuration;
 import java.time.Duration;
 
 /**
- * LangChain4j 统一配置 —— 替代手写版 LLMService (170行) + LLMProvider×3 (300行) + LLMCache (80行)。
+ * LLM 统一配置。
  *
+ * <p>当前所有 Agent 共享同一个 ChatLanguageModel Bean（默认 DeepSeek）。
+ * 架构上每个 AiServices 接口独立注册为 Bean，允许未来按 Agent 类型注入不同模型：</p>
  * <pre>
- * 框架替代总览:
- *   LLMService (170行)              → ChatLanguageModel Builder (15行)    -91%
- *   OpenAIProvider (120行)          → langchain4j-open-ai 内置             -100%
- *   AnthropicProvider (100行)       → 同 OpenAiChatModel (兼容协议)        -100%
- *   LLMCache (80行)                 → ChatMemory (可选)                   -100%
- *   5 Agent LLM调用 (~350行)         → 5 AiServices 接口 (~100行)          -71%
+ *   // 未来可改为：
+ *   TranslationService  → DeepL API
+ *   CodeReviewService   → Claude
+ *   DataReportService   → DeepSeek
  * </pre>
+ *
+ * <p>相比手写 LLM 调用代码（JSON 解析 + 重试），AiServices 自动做 JSON Schema
+ * 映射和反序列化，每个 Agent 的 LLM 调用代码从 ~70 行减到 ~5 行。</p>
  */
 @Slf4j
 @Configuration
@@ -76,5 +79,10 @@ public class LLMConfig {
     @Bean
     public DataReportService dataReportService(ChatLanguageModel m) {
         return AiServices.builder(DataReportService.class).chatLanguageModel(m).build();
+    }
+
+    @Bean
+    public TranslationService translationService(ChatLanguageModel m) {
+        return AiServices.builder(TranslationService.class).chatLanguageModel(m).build();
     }
 }

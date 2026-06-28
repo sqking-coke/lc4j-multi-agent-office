@@ -35,6 +35,7 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/api/v1/auth/**").permitAll()
                 .requestMatchers("/api/v2/**").permitAll()   // ← LangGraph4j 测试端点，生产环境去掉
+                .requestMatchers("/", "/index.html", "/favicon.ico").permitAll()
                 .requestMatchers("/actuator/health").permitAll()
                 .requestMatchers("/actuator/prometheus").permitAll()
                 .requestMatchers("/docs", "/docs/**", "/doc.html", "/api-docs", "/api-docs/**", "/swagger-ui", "/swagger-ui/**", "/webjars/**", "/v3/api-docs", "/v3/api-docs/**").permitAll()
